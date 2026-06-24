@@ -1,0 +1,19 @@
+{
+  "name": "tgbotdownloader",
+  "version": "1.0.0",
+  "description": "Telegram bot that downloads YouTube and TikTok (no watermark) videos via yt-dlp",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "grammy": "^1.30.0",
+    "p-queue": "^8.0.1"
+  }
+}
