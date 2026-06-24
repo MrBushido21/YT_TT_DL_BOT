@@ -13,6 +13,7 @@ import {
   cleanup,
   DownloadError,
 } from './downloader.js';
+import { recordUser, recordDownload, recordError, getSummary } from './stats.js';
 
 /**
  * Pending YouTube requests awaiting a quality choice.
@@ -73,6 +74,26 @@ export function registerCommands(bot) {
         'а если не помещается совсем — честно скажу об этом.',
     ),
   );
+
+  // Admin-only usage statistics.
+  bot.command('stats', async (ctx) => {
+    if (config.adminId == null || ctx.from?.id !== config.adminId) {
+      return; // silently ignore for everyone except the admin
+    }
+    const s = getSummary();
+    await ctx.reply(
+      '📊 Статистика бота\n\n' +
+        `👥 Уникальных пользователей: ${s.uniqueUsers}\n` +
+        `🟢 Активны сегодня: ${s.activeToday}\n` +
+        `📅 За 7 дней: ${s.activeWeek}\n\n` +
+        `📥 Всего запросов: ${s.totalRequests}\n` +
+        `▶️ YouTube видео: ${s.youtube}\n` +
+        `🎵 MP3: ${s.audio}\n` +
+        `🎬 TikTok видео: ${s.tiktok}\n` +
+        `🖼 TikTok слайдшоу: ${s.slideshow}\n` +
+        `⚠️ Ошибок: ${s.errors}`,
+    );
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -81,6 +102,8 @@ export function registerCommands(bot) {
 
 export function registerMessageHandler(bot) {
   bot.on('message:text', async (ctx) => {
+    recordUser(ctx.from?.id);
+
     const url = extractUrl(ctx.message.text);
     if (!url) {
       await ctx.reply('🔗 Пришли, пожалуйста, корректную ссылку (http/https) на видео.');
@@ -164,6 +187,7 @@ async function handleYouTubeVideo(ctx, url, startQuality) {
     });
     await deleteStatus(ctx, status);
     await cleanup(result.path);
+    recordDownload('youtube');
   } catch (err) {
     await reportError(ctx, status, err);
   }
@@ -221,6 +245,7 @@ async function handleYouTubeAudio(ctx, url) {
     await editStatus(ctx, status, `⬆️ Отправляю (${fmtMb(result.size)} МБ)…`);
     await ctx.replyWithAudio(new InputFile(file));
     await deleteStatus(ctx, status);
+    recordDownload('audio');
   } catch (err) {
     await reportError(ctx, status, err);
   } finally {
@@ -249,6 +274,7 @@ async function handleTikTok(ctx, url) {
       await editStatus(ctx, status, `🖼 Слайдшоу: скачиваю ${result.images.length} фото…`);
       await sendSlideshow(ctx, result.images);
       await deleteStatus(ctx, status);
+      recordDownload('slideshow');
       return;
     }
 
@@ -268,6 +294,7 @@ async function handleTikTok(ctx, url) {
     await ctx.replyWithVideo(new InputFile(result.path), { caption: 'TikTok (без водяного знака)' });
     await deleteStatus(ctx, status);
     await cleanup(result.path);
+    recordDownload('tiktok');
   } catch (err) {
     await reportError(ctx, status, err);
   }
@@ -341,6 +368,7 @@ async function reportError(ctx, status, err) {
 
   // Full technical detail goes to the server log only.
   console.error('[download error]', err instanceof DownloadError ? err.cause ?? err : err);
+  recordError();
 
   await editStatus(ctx, status, userMessage);
 }

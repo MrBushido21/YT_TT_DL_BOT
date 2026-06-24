@@ -25,6 +25,18 @@ export const config = {
   ytDlpPath: process.env.YTDLP_PATH || 'yt-dlp',
   ffmpegPath: process.env.FFMPEG_PATH || 'ffmpeg',
 
+  // Telegram user ID allowed to run /stats. Set ADMIN_ID in .env.
+  adminId: process.env.ADMIN_ID ? Number(process.env.ADMIN_ID) : null,
+
+  // Where usage statistics are persisted (small JSON file).
+  statsFile: process.env.STATS_FILE
+    ? path.resolve(process.env.STATS_FILE)
+    : path.resolve('./data/stats.json'),
+
+  // Drop users inactive for longer than this from the stats map, so the file
+  // can't grow forever. Lifetime aggregate counters are kept regardless.
+  statsUserTtlMs: 180 * 24 * 60 * 60 * 1000, // ~6 months
+
   // Hard timeout for a single yt-dlp invocation (ms).
   downloadTimeoutMs: 5 * 60 * 1000,
 

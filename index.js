@@ -7,6 +7,7 @@ import {
   registerMessageHandler,
   registerCallbackHandler,
 } from './src/handlers.js';
+import { initStats, flushStats } from './src/stats.js';
 
 const token = process.env.BOT_TOKEN;
 if (!token) {
@@ -16,6 +17,9 @@ if (!token) {
 
 // Make sure the temp/download directory exists before we start.
 await mkdir(config.tempDir, { recursive: true });
+
+// Load persisted usage statistics.
+await initStats();
 
 const bot = new Bot(token);
 
@@ -43,8 +47,11 @@ await bot.api.setMyCommands([
   { command: 'help', description: 'Как пользоваться' },
 ]);
 
-// Graceful shutdown.
-const stop = () => bot.stop();
+// Graceful shutdown: persist stats, then stop the bot.
+const stop = async () => {
+  await flushStats();
+  await bot.stop();
+};
 process.once('SIGINT', stop);
 process.once('SIGTERM', stop);
 
