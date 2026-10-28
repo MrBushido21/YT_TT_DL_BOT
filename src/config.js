@@ -23,7 +23,14 @@ export const config = {
 
   // External binaries. Must be on PATH, or give absolute paths here.
   ytDlpPath: process.env.YTDLP_PATH || 'yt-dlp',
-  ffmpegPath: process.env.FFMPEG_PATH || 'ffmpeg',
+  // ffmpeg: leave FFMPEG_PATH unset to let yt-dlp find it on PATH.
+  ffmpegPath: process.env.FFMPEG_PATH || null,
+
+  // Optional Netscape-format cookies.txt passed to yt-dlp (--cookies).
+  // Needed when YouTube blocks the server IP ("not a bot") or for 18+ videos.
+  ytDlpCookiesFile: process.env.YTDLP_COOKIES
+    ? path.resolve(process.env.YTDLP_COOKIES)
+    : null,
 
   // Telegram user ID allowed to run /stats. Set ADMIN_ID in .env.
   adminId: process.env.ADMIN_ID ? Number(process.env.ADMIN_ID) : null,

@@ -24,6 +24,20 @@ const IMAGE_EXTS = new Set(['jpg', 'jpeg', 'png', 'webp', 'heic']);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
+ * Flags shared by every yt-dlp call. Cookies (if configured) let YouTube
+ * treat requests as a logged-in browser: fixes "not a bot" checks and
+ * age-restricted videos.
+ */
+function baseArgs() {
+  const args = ['--no-warnings', '--no-playlist'];
+  if (config.ytDlpCookiesFile) args.push('--cookies', config.ytDlpCookiesFile);
+  // Only pass an explicit path: a bare "ffmpeg" is treated as a missing file
+  // and yt-dlp silently skips merging (video and audio end up separate).
+  if (config.ffmpegPath) args.push('--ffmpeg-location', config.ffmpegPath);
+  return args;
+}
+
+/**
  * Run yt-dlp, retrying on transient errors (e.g. TikTok's flaky
  * "rehydration" failure, where the same URL succeeds on a later attempt).
  * @param {string[]} args
@@ -116,29 +130,42 @@ function spawnYtDlpOnce(args, purpose = 'yt-dlp') {
  * @param {number} code
  */
 function mapYtDlpError(stderr, code) {
-  const s = stderr.toLowerCase();
   const tech = new Error(`yt-dlp exited with code ${code}: ${stderr.trim()}`);
 
-  if (s.includes('private video') || s.includes('login required') || s.includes('sign in')) {
+  // Match only the ERROR: lines, minus yt-dlp's boilerplate tail ("please
+  // report this issue ... Confirm you are on the latest version"). Matching
+  // the whole stderr caused false hits, e.g. "webpage" + "Confirm" -> "age".
+  const errorLines = stderr.split(/\r?\n/).filter((l) => l.startsWith('ERROR:'));
+  const s = (errorLines.length ? errorLines.join('\n') : stderr)
+    .replace(/;?\s*please report this issue[\s\S]*?(?=\n|$)/gi, '')
+    .toLowerCase();
+
+  if (/not a bot/.test(s)) {
+    return new DownloadError(
+      '🤖 YouTube принял сервер за бота и не отдал видео. Попробуйте позже.',
+      tech,
+    );
+  }
+  if (/confirm your age|age[- ]restricted|inappropriate for some users/.test(s)) {
+    return new DownloadError('🔞 Видео с возрастным ограничением — скачать не получилось.', tech);
+  }
+  if (/private video|video is private|login required|log in for access|requires? (login|authentication)|members[- ]only/.test(s)) {
     return new DownloadError('🔒 Это видео приватное или требует входа в аккаунт.', tech);
   }
-  if (s.includes('video unavailable') || s.includes('not available') || s.includes('removed')) {
-    return new DownloadError('🚫 Видео недоступно или было удалено.', tech);
-  }
-  if (s.includes('geo') && (s.includes('block') || s.includes('restrict'))) {
+  if (/geo.?restrict|not available in your country|ip address is blocked/.test(s)) {
     return new DownloadError('🌍 Видео заблокировано в регионе сервера.', tech);
   }
-  if (s.includes('rehydration') || s.includes('universal data')) {
+  if (/video unavailable|has been removed|been deleted|not available/.test(s)) {
+    return new DownloadError('🚫 Видео недоступно или было удалено.', tech);
+  }
+  if (/rehydration|universal data|unexpected response from webpage/.test(s)) {
     return new DownloadError(
       '⚠️ TikTok временно не отдал данные о видео. Попробуйте прислать ссылку ещё раз.',
       tech,
       { retriable: true },
     );
   }
-  if (s.includes('age') && s.includes('confirm')) {
-    return new DownloadError('🔞 Видео с возрастным ограничением — скачать не получилось.', tech);
-  }
-  if (s.includes('nsig') || s.includes('throttl') || s.includes('failed to extract') || s.includes('player')) {
+  if (/nsig|n challenge|signature|throttl|failed to extract/.test(s)) {
     return new DownloadError(
       '⚠️ YouTube временно ограничивает загрузку (throttling). Попробуйте позже или обновите yt-dlp.',
       tech,
@@ -164,7 +191,7 @@ function mapYtDlpError(stderr, code) {
  */
 export async function getInfo(url) {
   const { stdout } = await runYtDlp(
-    ['--no-warnings', '--no-playlist', '--dump-single-json', url],
+    [...baseArgs(), '--dump-single-json', url],
     'getInfo',
   );
   try {
@@ -223,7 +250,10 @@ function makeOutputTemplate() {
  */
 async function findOutputFile(id) {
   const entries = await readdir(config.tempDir);
-  const match = entries.find((name) => name.startsWith(id));
+  // Skip unmerged per-format parts like "<id>.f396.mp4" and in-progress files.
+  const match = entries.find(
+    (name) => name.startsWith(`${id}.`) && !/\.f\d+\.|\.part$|\.ytdl$/.test(name),
+  );
   return match ? path.join(config.tempDir, match) : null;
 }
 
@@ -238,14 +268,11 @@ export async function downloadVideo(url, format) {
 
   await runYtDlp(
     [
-      '--no-warnings',
-      '--no-playlist',
+      ...baseArgs(),
       '-f',
       format,
       '--merge-output-format',
       'mp4',
-      '--ffmpeg-location',
-      config.ffmpegPath,
       '-o',
       template,
       url,
@@ -271,8 +298,7 @@ export async function downloadAudioMp3(url) {
 
   await runYtDlp(
     [
-      '--no-warnings',
-      '--no-playlist',
+      ...baseArgs(),
       '-f',
       'bestaudio/best',
       '-x',
@@ -280,8 +306,6 @@ export async function downloadAudioMp3(url) {
       'mp3',
       '--audio-quality',
       '0',
-      '--ffmpeg-location',
-      config.ffmpegPath,
       '-o',
       template,
       url,

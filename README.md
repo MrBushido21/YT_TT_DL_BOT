@@ -26,6 +26,9 @@ Telegram-бот на Node.js, который скачивает видео с **
    - или scoop: `scoop install yt-dlp`
    - macOS: `brew install yt-dlp`
    - Linux / универсально: `pipx install yt-dlp` или [см. инструкцию](https://github.com/yt-dlp/yt-dlp#installation)
+   - **Рекомендуется через pip с дополнениями:** `pip install -U "yt-dlp[default,curl-cffi]"`
+     — `curl-cffi` нужен TikTok (имитация браузера), `default` ставит `yt-dlp-ejs`
+     (решатель JS-челленджей YouTube; также нужен [Deno](https://deno.com): `winget install DenoLand.Deno`).
    - Проверка: `yt-dlp --version`
 3. **ffmpeg** — нужен для склейки видео+аудио.
    - Windows: `winget install Gyan.FFmpeg` или `scoop install ffmpeg`
@@ -83,6 +86,10 @@ src/handlers.js     — обработчики сообщений и inline-кн
 - TikTok без водяного знака работает «из коробки»: yt-dlp скачивает чистый исходник.
 - Если YouTube начал троттлить (`nsig` / `Failed to extract`), обнови yt-dlp:
   `yt-dlp -U` (или переустанови через свой пакетный менеджер) — это самая частая причина.
+- Если YouTube пишет «принял сервер за бота» (часто на VPS/хостингах), экспортируй
+  `cookies.txt` из браузера, где ты залогинен в YouTube (расширение «Get cookies.txt LOCALLY»),
+  и укажи путь в `.env`: `YTDLP_COOKIES=./data/cookies.txt`. Это же позволяет качать 18+ видео.
+  Лучше использовать отдельный, не основной Google-аккаунт.
 - Лимит 50 МБ — ограничение Bot API, а не бота. Для больших файлов потребовался бы
   локальный Bot API сервер; здесь он не используется.
 ```
